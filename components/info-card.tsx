@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoreHorizontal, Loader2 } from "lucide-react";
 import type { InfoCardType } from "@/types/info-card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 interface InfoCardProps {
   card: InfoCardType;
@@ -13,7 +14,7 @@ interface InfoCardProps {
     action: "more" | "skip" | "custom" | "deep",
     question?: string
   ) => void;
-  isDeepResearchLoading?: boolean;
+  isDeepResearchLoading: boolean;
 }
 
 export default function InfoCard({
@@ -21,18 +22,16 @@ export default function InfoCard({
   onAction,
   isDeepResearchLoading,
 }: InfoCardProps) {
-  const [isAskingQuestion, setIsAskingQuestion] = useState(false);
-  const [question, setQuestion] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customQuestion, setCustomQuestion] = useState("");
 
-  const handleAskQuestion = async () => {
-    if (!question.trim()) return;
-
-    setIsSubmitting(true);
-    await onAction(card.id, "custom", question);
-    setIsSubmitting(false);
-    setIsAskingQuestion(false);
-    setQuestion("");
+  const handleCustomSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customQuestion.trim()) {
+      onAction(card.id, "custom", customQuestion);
+      setShowCustomInput(false);
+      setCustomQuestion("");
+    }
   };
 
   // Generate a random color for the dot
@@ -46,104 +45,127 @@ export default function InfoCard({
   ];
   const dotColor = dotColors[Math.floor(Math.random() * dotColors.length)];
 
+  // Format deep research content with proper markdown styling
+  const formatDeepResearchContent = (content: string) => {
+    return content.split("\n").map((line, index) => {
+      if (line.startsWith("# ")) {
+        return (
+          <h1 key={index} className="text-2xl font-bold mt-6 mb-4">
+            {line.slice(2)}
+          </h1>
+        );
+      }
+      if (line.startsWith("## ")) {
+        return (
+          <h2 key={index} className="text-xl font-semibold mt-5 mb-3">
+            {line.slice(3)}
+          </h2>
+        );
+      }
+      if (line.startsWith("### ")) {
+        return (
+          <h3 key={index} className="text-lg font-medium mt-4 mb-2">
+            {line.slice(4)}
+          </h3>
+        );
+      }
+      if (line.startsWith("- ")) {
+        return (
+          <li key={index} className="ml-6 mb-1">
+            {line.slice(2)}
+          </li>
+        );
+      }
+      if (line.trim() === "") {
+        return <br key={index} />;
+      }
+      return (
+        <p key={index} className="mb-3">
+          {line}
+        </p>
+      );
+    });
+  };
+
   return (
-    <div
-      className={`border-b border-gray-200 pb-3 ${
-        card.isDeepResearch ? "bg-blue-50" : ""
-      }`}
-    >
-      <div className="flex items-start space-x-3 pt-3">
-        <div className={`h-2 w-2 rounded-full ${dotColor} mt-2`} />
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <span className="font-semibold text-sm">{card.topic}</span>
-              {card.isDeepResearch && (
-                <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
-                  Deep Research
-                </span>
-              )}
-            </div>
-            <button className="text-gray-500">
-              <MoreHorizontal size={18} />
-            </button>
+    <Card className="relative">
+      {isDeepResearchLoading && card.isDeepResearch && (
+        <div className="absolute top-2 right-2">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+        </div>
+      )}
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="flex items-center space-x-2">
+          <div className={`h-2 w-2 rounded-full ${dotColor} mt-2`} />
+          <h3 className="text-sm font-medium">{card.headline}</h3>
+        </div>
+        {card.isDeepResearch && (
+          <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800">
+            Deep Research
+          </span>
+        )}
+      </CardHeader>
+      <CardContent>
+        {card.isDeepResearch ? (
+          <div className="prose prose-sm max-w-none">
+            {formatDeepResearchContent(card.detail)}
           </div>
-
-          <h3 className="font-semibold mt-1">{card.headline}</h3>
-
-          {card.detail && (
-            <p className="text-sm text-gray-700 mt-1 mb-2">{card.detail}</p>
-          )}
-
-          {card.parentCardId && card.followUpQuestion && (
-            <div className="bg-gray-100 p-2 rounded-md text-sm text-gray-700 mb-2 italic">
-              Re: {card.followUpQuestion}
-            </div>
-          )}
-
-          <div className="flex items-center space-x-3 mt-3">
-            <button
-              className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100"
-              onClick={() => setIsAskingQuestion(!isAskingQuestion)}
-              aria-label="Ask a question"
-            >
-              <span className="text-xs font-medium">X</span>
-            </button>
-
-            <button
-              className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100"
-              onClick={() => onAction(card.id, "more")}
-              aria-label="Tell me more"
-            >
-              <span className="text-xs font-medium">X</span>
-            </button>
-
-            <button
-              className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center hover:bg-gray-100"
-              onClick={() => onAction(card.id, "skip")}
-              aria-label="Skip to next"
-            >
-              <span className="text-xs font-medium">X</span>
-            </button>
-
-            <button
-              className="px-3 py-1 text-sm border border-gray-300 rounded-full hover:bg-gray-100 flex items-center space-x-1"
+        ) : (
+          <p className="text-sm text-gray-600">{card.detail}</p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAction(card.id, "more")}
+            disabled={isDeepResearchLoading}
+          >
+            More like this
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onAction(card.id, "skip")}
+            disabled={isDeepResearchLoading}
+          >
+            Skip
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCustomInput(!showCustomInput)}
+            disabled={isDeepResearchLoading}
+          >
+            Ask a question
+          </Button>
+          {!card.isDeepResearch && (
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => onAction(card.id, "deep")}
               disabled={isDeepResearchLoading}
-              aria-label="Go deeper"
             >
-              {isDeepResearchLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <span>Go deeper</span>
-                  <span className="text-xs">→</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {isAskingQuestion && (
-            <div className="mt-2 flex">
-              <Input
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Ask a question..."
-                className="flex-1 text-sm h-8"
-              />
-              <Button
-                onClick={handleAskQuestion}
-                disabled={isSubmitting || !question.trim()}
-                size="sm"
-                className="ml-2 h-8"
-              >
-                {isSubmitting ? "..." : "Ask"}
-              </Button>
-            </div>
+              Go deeper
+            </Button>
           )}
         </div>
-      </div>
-    </div>
+        {showCustomInput && (
+          <form onSubmit={handleCustomSubmit} className="mt-4">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                placeholder="Ask a follow-up question..."
+                value={customQuestion}
+                onChange={(e) => setCustomQuestion(e.target.value)}
+                className="flex-1"
+              />
+              <Button type="submit" size="sm">
+                Ask
+              </Button>
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
   );
 }

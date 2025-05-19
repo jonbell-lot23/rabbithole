@@ -4,13 +4,17 @@ import { useState, useRef, useCallback } from "react";
 import { getCards } from "./actions";
 import InfoCard from "@/components/info-card";
 import type { InfoCardType } from "@/types/info-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 export default function Home() {
   const [cards, setCards] = useState<InfoCardType[]>([]);
+  const [deepCards, setDeepCards] = useState<InfoCardType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeepResearchLoading, setIsDeepResearchLoading] = useState(false);
   const [currentTopic, setCurrentTopic] = useState("");
   const [page, setPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("stream");
   const observer = useRef<IntersectionObserver>();
   const loadingRef = useRef<HTMLDivElement>(null);
 
@@ -37,8 +41,9 @@ export default function Home() {
         undefined,
         true
       );
-      setCards((prevCards) => [...prevCards, ...newCards]);
+      setDeepCards((prevCards) => [...prevCards, ...newCards]);
       setIsDeepResearchLoading(false);
+      setActiveTab("deeper");
       return;
     }
 
@@ -88,25 +93,60 @@ export default function Home() {
           />
         </div>
 
-        {isLoading ? (
-          <div className="text-center">Loading initial content...</div>
-        ) : (
-          <div className="space-y-4">
-            {cards.map((card, index) => (
-              <div
-                key={card.id}
-                ref={index === cards.length - 1 ? lastCardRef : undefined}
-              >
-                <InfoCard
-                  card={card}
-                  onAction={handleAction}
-                  isDeepResearchLoading={isDeepResearchLoading}
-                />
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="stream">Stream</TabsTrigger>
+            <TabsTrigger value="deeper" className="flex items-center gap-2">
+              Deeper
+              {isDeepResearchLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : deepCards.length > 0 ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="stream">
+            {isLoading ? (
+              <div className="text-center">Loading initial content...</div>
+            ) : (
+              <div className="space-y-4">
+                {cards.map((card, index) => (
+                  <div
+                    key={card.id}
+                    ref={index === cards.length - 1 ? lastCardRef : undefined}
+                  >
+                    <InfoCard
+                      card={card}
+                      onAction={handleAction}
+                      isDeepResearchLoading={isDeepResearchLoading}
+                    />
+                  </div>
+                ))}
+                <div ref={loadingRef} className="h-4" />
               </div>
-            ))}
-            <div ref={loadingRef} className="h-4" />
-          </div>
-        )}
+            )}
+          </TabsContent>
+
+          <TabsContent value="deeper">
+            <div className="space-y-4">
+              {deepCards.map((card) => (
+                <div key={card.id}>
+                  <InfoCard
+                    card={card}
+                    onAction={handleAction}
+                    isDeepResearchLoading={isDeepResearchLoading}
+                  />
+                </div>
+              ))}
+              {deepCards.length === 0 && !isDeepResearchLoading && (
+                <div className="text-center text-gray-500">
+                  Click "Go deeper" on any card to start deep research
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );

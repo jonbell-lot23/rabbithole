@@ -310,8 +310,6 @@ const client = new OpenAI({
 const seenFacts = new Set<string>();
 
 function isDuplicateFact(fact: string): boolean {
-  // Normalize the fact by removing extra whitespace, converting to lowercase,
-  // and removing common variations
   const normalizedFact = fact
     .toLowerCase()
     .trim()
@@ -335,6 +333,37 @@ function addSeenFact(fact: string) {
   seenFacts.add(normalizedFact);
 }
 
+function cleanAndParseJSON(content: string) {
+  try {
+    // First try to parse the entire content as JSON
+    try {
+      return JSON.parse(content);
+    } catch {
+      // If that fails, try to extract JSON from the content
+      const jsonStart = content.indexOf("{");
+      if (jsonStart === -1) throw new Error("No JSON object found");
+      const jsonContent = content.slice(jsonStart);
+
+      // Find the matching closing brace
+      let braceCount = 1;
+      let jsonEnd = jsonStart + 1;
+      while (braceCount > 0 && jsonEnd < jsonContent.length) {
+        if (jsonContent[jsonEnd] === "{") braceCount++;
+        if (jsonContent[jsonEnd] === "}") braceCount--;
+        jsonEnd++;
+      }
+      if (braceCount !== 0) throw new Error("Unmatched braces in JSON");
+
+      const cleanContent = jsonContent.slice(0, jsonEnd);
+      return JSON.parse(cleanContent);
+    }
+  } catch (error) {
+    console.error("Failed to parse JSON:", error);
+    console.log("Raw content:", content);
+    return null;
+  }
+}
+
 export async function getCards(
   topic: string,
   page: number = 1,
@@ -351,14 +380,74 @@ export async function getCards(
   if (parentCardId && followUpQuestion) {
     prompt = `Based on the topic "${topic}", answer this follow-up question: "${followUpQuestion}". Provide a detailed, factual response.`;
   } else if (isDeepResearch) {
-    prompt = `Perform a deep research analysis on "${topic}". Include:
-    1. Comprehensive historical context
-    2. Current state and developments
-    3. Expert opinions and research findings
-    4. Controversies or debates in the field
-    5. Future implications and trends
-    
-    Format the response as a detailed, well-structured analysis with multiple sections.`;
+    prompt = `Perform an extremely detailed, technical research analysis on "${topic}". This is for a highly technical audience that wants deep, specific knowledge. Avoid surface-level information that's common knowledge. Focus on cutting-edge research, technical details, and lesser-known aspects.
+
+Structure your response as a comprehensive technical report with the following sections:
+
+1. Technical Overview
+   - Advanced concepts and mechanisms
+   - Technical specifications and parameters
+   - Core scientific principles involved
+   - Recent technical breakthroughs
+
+2. Research Methodology
+   - Experimental approaches used
+   - Measurement techniques
+   - Data collection methods
+   - Statistical analysis methods
+
+3. Technical Analysis
+   - Detailed mechanisms and processes
+   - Chemical/biological/physical interactions
+   - System architectures and components
+   - Performance characteristics
+
+4. Expert Research Findings
+   - Recent peer-reviewed studies
+   - Technical papers and publications
+   - Research methodologies used
+   - Key technical discoveries
+
+5. Technical Controversies
+   - Scientific debates and disagreements
+   - Conflicting research findings
+   - Technical challenges and limitations
+   - Unresolved technical questions
+
+6. Future Technical Developments
+   - Emerging technologies
+   - Research directions
+   - Technical challenges to overcome
+   - Potential breakthroughs
+
+7. Technical Data and Metrics
+   - Precise measurements and values
+   - Performance metrics
+   - Statistical analysis
+   - Technical specifications
+
+8. Technical Case Studies
+   - Detailed implementation examples
+   - Technical success stories
+   - Failure analysis
+   - Technical lessons learned
+
+9. Cross-disciplinary Technical Connections
+   - Related technical fields
+   - Interdisciplinary research
+   - Technical integration points
+   - Shared technical challenges
+
+10. Technical Implications
+    - Engineering considerations
+    - Technical requirements
+    - Implementation challenges
+    - Technical impact assessment
+
+Format your response as a single, cohesive technical document with clear section headers and detailed explanations.
+Focus on providing deep technical insights, specific data points, and expert-level information.
+Include precise measurements, technical specifications, and research methodologies.
+Avoid general knowledge and focus on advanced technical details that would interest experts in the field.`;
   } else if (page === 1) {
     prompt = `Provide a comprehensive overview of "${topic}". Include key facts, historical context, and important details.`;
   } else {
@@ -371,10 +460,10 @@ export async function getCards(
       messages: [
         {
           role: "system",
-          content: `You are a helpful assistant that provides factual, well-researched information. 
+          content: `You are a technical expert providing detailed, research-backed information. 
           ${
             isDeepResearch
-              ? "Format your response as a detailed analysis with multiple sections, each with a 'headline' and 'detail' field. Focus on depth and comprehensive coverage."
+              ? "Format your response as a single, cohesive technical document with clear section headers and detailed explanations. Do not split it into separate cards or sections."
               : "Format your response as a JSON array of objects with 'headline' and 'detail' fields. Each object should represent a distinct fact or piece of information."
           }
           Make sure each fact is unique and not a variation of previously mentioned facts.
@@ -387,7 +476,7 @@ export async function getCards(
         },
       ],
       temperature: isDeepResearch ? 0.3 : 0.7,
-      max_tokens: isDeepResearch ? 2000 : 1000,
+      max_tokens: isDeepResearch ? 8000 : 1000,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -395,28 +484,43 @@ export async function getCards(
       throw new Error("No content in response");
     }
 
-    // Parse the response and filter out duplicates
-    let facts;
-    try {
-      // Clean the response to ensure it's valid JSON
-      const cleanedContent = content
-        .trim()
-        .replace(/^```json\n?/, "")
-        .replace(/\n?```$/, "");
-      facts = JSON.parse(cleanedContent);
-      // Ensure we have an array
-      if (!Array.isArray(facts)) {
-        facts = [facts];
-      }
-    } catch (error) {
-      console.error("Failed to parse response as JSON:", error);
-      console.log("Raw response:", content);
+    if (isDeepResearch) {
+      // For deep research, return a single card with the entire content
+      return [
+        {
+          id: `${Date.now()}-deep`,
+          topic,
+          headline: `Technical Research Analysis: ${topic}`,
+          detail: content,
+          isDeepResearch: true,
+        },
+      ];
+    }
+
+    // For regular facts, parse as JSON and handle as before
+    let facts = cleanAndParseJSON(content);
+    if (!facts) {
       // Fallback to a simple extraction if JSON parsing fails
       const lines = content.split("\n").filter((line) => line.trim());
       facts = lines.map((line) => ({
         headline: line.split(":")[0]?.trim() || "Interesting fact",
         detail: line.split(":")[1]?.trim() || line.trim(),
       }));
+    }
+
+    // Handle both array and object responses
+    if (!Array.isArray(facts)) {
+      // If it's an object with sections, convert to array
+      if (typeof facts === "object") {
+        facts = Object.entries(facts).map(
+          ([section, content]: [string, any]) => ({
+            headline: content.headline || section,
+            detail: content.detail || JSON.stringify(content),
+          })
+        );
+      } else {
+        facts = [facts];
+      }
     }
 
     // Filter out duplicates and add new facts to seen facts
@@ -437,11 +541,11 @@ export async function getCards(
           {
             role: "system",
             content:
-              "Provide completely different facts about the topic, focusing on new aspects that haven't been covered. Return only valid JSON.",
+              "Provide completely different technical facts about the topic, focusing on advanced aspects that haven't been covered. Return only valid JSON.",
           },
           {
             role: "user",
-            content: `Give me different facts about "${topic}" that haven't been mentioned before.`,
+            content: `Give me different technical details about "${topic}" that haven't been mentioned before.`,
           },
         ],
         temperature: 0.8,
@@ -450,15 +554,9 @@ export async function getCards(
 
       const retryContent = retryResponse.choices[0]?.message?.content;
       if (retryContent) {
-        try {
-          const cleanedContent = retryContent
-            .trim()
-            .replace(/^```json\n?/, "")
-            .replace(/\n?```$/, "");
-          const retryFacts = JSON.parse(cleanedContent);
-          const finalFacts = Array.isArray(retryFacts)
-            ? retryFacts
-            : [retryFacts];
+        facts = cleanAndParseJSON(retryContent);
+        if (facts) {
+          const finalFacts = Array.isArray(facts) ? facts : [facts];
           return finalFacts.map((fact: any, index: number) => ({
             id: `${Date.now()}-${index}`,
             topic,
@@ -468,9 +566,6 @@ export async function getCards(
             followUpQuestion,
             isDeepResearch,
           }));
-        } catch (error) {
-          console.error("Failed to parse retry response:", error);
-          console.log("Raw retry response:", retryContent);
         }
       }
     }
